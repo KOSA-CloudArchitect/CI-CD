@@ -1,0 +1,27 @@
+# values.yaml
+# 이 파일은 Argo CD가 참조하는 핵심 설정 파일입니다.
+replicaCount: 1
+
+image:
+  repository: asia-northeast3-docker.pkg.dev/kwon-cicd/my-web-app-repo/web-server-backend
+  pullPolicy: IfNotPresent
+  # Jenkins가 이 태그를 빌드 번호로 업데이트합니다.
+  tag: "1"
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
