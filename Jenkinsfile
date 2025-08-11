@@ -12,7 +12,8 @@ pipeline {
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         HELM_CHART_PATH   = 'helm-chart/my-web-app'
         GITHUB_ORG        = 'KOSA-CloudArchitect'
-        GITHUB_REPO       = 'CI-CD'
+        GITHUB_REPO_WEB   = 'web-server'
+        GITHUB_REPO_CICD  = 'CI-CD'
         GITHUB_USER       = 'kwon0905'
     }
 
@@ -20,7 +21,10 @@ pipeline {
         stage('Checkout Web-Server Code') {
             steps {
                 // 팀원의 web-server 레포지토리를 체크아웃합니다.
-                git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${GITHUB_ORG}/web-server.git"
+                // withCredentials 블록을 사용하여 PAT를 안전하게 전달합니다.
+                withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                    sh "git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git"
+                }
             }
         }
 
@@ -28,15 +32,16 @@ pipeline {
             steps {
                 script {
                     echo "Building with Podman: ${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}:${IMAGE_TAG}"
-                    // web-server 레포지토리의 backend 폴더로 이동하여 빌드합니다.
-                    dir("web-server/backend") {
-                        sh "podman build -t ${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}:${IMAGE_TAG} ."
-                        sh "podman push ${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}:${IMAGE_TAG}"
+                    dir("web-server") {
+                        dir("backend") {
+                            sh "podman build -t ${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}:${IMAGE_TAG} ."
+                            sh "podman push ${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}:${IMAGE_TAG}"
+                        }
                     }
                 }
             }
         }
-
+        
         stage('Update Helm Chart & Push to CI/CD Repo') {
             steps {
                 script {
@@ -48,8 +53,8 @@ pipeline {
                     sh "git add ${HELM_CHART_PATH}/values.yaml"
                     sh "git commit -m 'Update image tag to ${IMAGE_TAG} by Jenkins build #${env.BUILD_NUMBER}'"
 
-                    withCredentials([string(credentialsId: 'github-pat-token')]) {
-                        sh "git push https://${GITHUB_USER}:${env.SECRET}@github.com/${GITHUB_ORG}/${GITHUB_REPO}.git HEAD:main"
+                    withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                        sh "git push https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_CICD}.git HEAD:main"
                     }
                 }
             }
