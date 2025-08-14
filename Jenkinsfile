@@ -11,10 +11,10 @@ pipeline {
         GCP_REGION        = 'asia-northeast3'
         GCR_REGISTRY_HOST = "${GCP_REGION}-docker.pkg.dev"
         GCR_REPO_NAME     = "my-web-app-repo/web-server-backend"
-        
+
         // 최종 이미지 이름을 환경 변수로 통합하여 관리합니다.
         IMAGE_NAME        = "${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}"
-        
+
         // 빌드 번호를 이미지 태그로 사용합니다.
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
 
@@ -38,19 +38,20 @@ pipeline {
 
         stage('Build & Push Docker Image (Podman)') {
             steps {
-                //  podman 명령어를 실행하기 위해 'podman-agent' 컨테이너를 명시적으로 지정합니다.
+                // podman 명령어를 실행하기 위해 'podman-agent' 컨테이너를 명시적으로 지정합니다.
                 container('podman-agent') {
                     script {
                         echo "Building with Podman: ${IMAGE_NAME}:${IMAGE_TAG}"
-                        
+
                         // 작업 디렉터리를 애플리케이션의 backend 폴더로 변경합니다.
                         dir("${GITHUB_REPO_WEB}/backend") {
-                            // 1. GCP Artifact Registry에 인증합니다. (Pod의 서비스 계정 권한 사용)
-                            sh "gcloud auth configure-docker ${GCR_REGISTRY_HOST}"
-                            
+                            // 1. GCP Artifact Registry에 인증합니다.
+                            // ❗ --quiet 옵션을 추가하여 대화형 질문 없이 인증을 수행합니다.
+                            sh "gcloud auth configure-docker ${GCR_REGISTRY_HOST} --quiet"
+
                             // 2. Podman으로 이미지를 빌드합니다.
                             sh "podman build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                            
+
                             // 3. 빌드된 이미지를 Artifact Registry로 푸시합니다.
                             sh "podman push ${IMAGE_NAME}:${IMAGE_TAG}"
                         }
@@ -61,7 +62,7 @@ pipeline {
 
         stage('Update Helm Chart & Push to CI/CD Repo') {
             steps {
-                // ❗ git, sed 명령어의 일관된 실행 환경을 위해 'podman-agent' 컨테이너를 사용합니다.
+                // git, sed 명령어의 일관된 실행 환경을 위해 'podman-agent' 컨테이너를 사용합니다.
                 container('podman-agent') {
                     script {
                         // Git 커밋을 위한 사용자 정보를 설정합니다.
@@ -70,7 +71,7 @@ pipeline {
 
                         // Helm 차트의 values.yaml 파일에서 이미지 태그를 현재 빌드 번호로 변경합니다.
                         sh "sed -i 's|^    tag:.*|    tag: \"${IMAGE_TAG}\"|' ${HELM_CHART_PATH}/values.yaml"
-                        
+
                         // 변경된 values.yaml 파일을 git에 추가하고 커밋합니다.
                         sh "git add ${HELM_CHART_PATH}/values.yaml"
                         sh "git commit -m 'Update image tag to ${IMAGE_TAG} by Jenkins build #${env.BUILD_NUMBER}'"
