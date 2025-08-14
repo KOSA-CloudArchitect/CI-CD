@@ -45,9 +45,10 @@ pipeline {
 
                         // 작업 디렉터리를 애플리케이션의 backend 폴더로 변경합니다.
                         dir("${GITHUB_REPO_WEB}/backend") {
-                            // 1. GCP Artifact Registry에 인증합니다.
-                            // ❗ --quiet 옵션을 추가하여 대화형 질문 없이 인증을 수행합니다.
-                            sh "gcloud auth configure-docker ${GCR_REGISTRY_HOST} --quiet"
+                            
+                            // 1. 액세스 토큰을 이용해 Artifact Registry에 직접 로그인합니다.
+                            //    (가장 확실하고 안정적인 인증 방식)
+                            sh "gcloud auth print-access-token | podman login -u oauth2accesstoken --password-stdin https://${GCR_REGISTRY_HOST}"
 
                             // 2. Podman으로 이미지를 빌드합니다.
                             sh "podman build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
