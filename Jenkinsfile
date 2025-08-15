@@ -30,7 +30,7 @@ pipeline {
         stage('Checkout Web-Server Code') {
             steps {
                 // 애플리케이션 소스 코드가 있는 web-server 레포지토리를 클론합니다.
-                withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                withCredentials([string(credentialsId: 'github-pat-for-cicd-job', variable: 'PAT')]) {
                     sh "git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git"
                 }
             }
@@ -46,14 +46,13 @@ pipeline {
                         // 작업 디렉터리를 애플리케이션의 backend 폴더로 변경합니다.
                         dir("${GITHUB_REPO_WEB}/backend") {
                             
-                            // 1. 액세스 토큰을 이용해 Artifact Registry에 직접 로그인합니다.
-                            //    (가장 확실하고 안정적인 인증 방식)
-                            sh "gcloud auth print-access-token | podman login -u oauth2accesstoken --password-stdin https://${GCR_REGISTRY_HOST}"
+                            // podman login 명령어를 제거.
+                            // Pod Template에 마운트된 GCP 서비스 계정 키로 자동 인증됩니다.
 
-                            // 2. Podman으로 이미지를 빌드합니다.
+                            // 1. Podman으로 이미지를 빌드합니다.
                             sh "podman build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
 
-                            // 3. 빌드된 이미지를 Artifact Registry로 푸시합니다.
+                            // 2. 빌드된 이미지를 Artifact Registry로 푸시합니다.
                             sh "podman push ${IMAGE_NAME}:${IMAGE_TAG}"
                         }
                     }
