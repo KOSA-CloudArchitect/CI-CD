@@ -1,0 +1,27 @@
+# final-jenkins-values.yaml (최종 결정판)
+controller:
+  serviceType: LoadBalancer
+  
+  installPlugins:
+    - kubernetes
+    - workflow-aggregator
+    - git
+    - configuration-as-code
+    - google-oauth-credentials
+
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      # JCasC 파일의 Key 이름은 중요하지 않으므로 단순하게 변경
+      k8s-cloud: |-
+        jenkins:
+          clouds:
+          - kubernetes:
+              name: "kubernetes"
+              namespace: "jenkins"
+              jenkinsUrl: "http://jenkins.jenkins.svc.cluster.local:8080"
+              credentialsId: "KUBERNETES_SERVICE_ACCOUNT"
+              skipTlsVerify: true
+              podLabels:
+              - key: "jenkins"
+                value: "slave"

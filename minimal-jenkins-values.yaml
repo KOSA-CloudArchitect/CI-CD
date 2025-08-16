@@ -1,0 +1,11 @@
+# minimal-jenkins-values.yaml
+controller:
+  # 외부 접속을 위한 LoadBalancer 설정
+  serviceType: LoadBalancer
+  
+  # Helm Chart의 기본 플러그인 목록을 사용 (가장 안정적)
+  installPlugins: []
+
+  # JCasC 자동 설정 기능을 완전히 비활성화
+  JCasC:
+    enabled: false
