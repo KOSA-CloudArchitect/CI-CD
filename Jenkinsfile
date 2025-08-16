@@ -1,69 +1,51 @@
-// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile의 최종 내용
+// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile (Scripted Pipeline 형식)
 
-// pipeline { ... } 블록이 없는 상태여야 합니다.
-agent { label 'podman-agent' }
-
-environment {
-    // GCP 및 이미지 정보
-    GCP_PROJECT_ID    = 'kwon-cicd'
-    GCP_REGION        = 'asia-northeast3'
-    GCR_REGISTRY_HOST = "${GCP_REGION}-docker.pkg.dev"
-    GCR_REPO_NAME     = "my-web-app-repo/web-server-backend"
-    IMAGE_NAME        = "${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}"
-    IMAGE_TAG         = "${env.BUILD_NUMBER}"
-
-    // Helm 차트 및 GitHub 정보
-    HELM_CHART_PATH   = 'helm-chart/my-web-app'
-    GITHUB_ORG        = 'KOSA-CloudArchitect'
-    GITHUB_REPO_WEB   = 'web-server'
-    GITHUB_REPO_CICD  = 'CI-CD'
-    GITHUB_USER       = 'kwon0905'
-}
-
-stages {
-    // 시작 스크립트에서 CI-CD 레포지토리는 이미 checkout 했으므로,
-    // 여기서는 실제 애플리케이션 코드 Checkout부터 시작합니다.
+// 에이전트 Pod를 할당받고, 그 안에서 모든 작업을 실행
+node('podman-agent') {
+    
+    // ----------------- STAGES START -----------------
     stage('Checkout Web-Server Code') {
-        steps {
-            withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
-                sh "git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git"
-            }
+        // 'env' 객체를 통해 환경 변수를 직접 사용
+        withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
+            sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
         }
     }
 
     stage('Build & Push Docker Image (Podman)') {
-        steps {
-            container('podman-agent') {
+        container('podman-agent') {
+            dir("${env.GITHUB_REPO_WEB}/backend") {
                 script {
-                    dir("${GITHUB_REPO_WEB}/backend") {
-                        sh "podman build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                        sh "podman push ${IMAGE_NAME}:${IMAGE_TAG}"
-                    }
+                    // 이미지 전체 이름을 직접 조합
+                    def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
+                    echo "Building with Podman: ${fullImageName}"
+                    
+                    sh "podman build -t ${fullImageName} ."
+                    sh "podman push ${fullImageName}"
                 }
             }
         }
     }
 
-    stage('Update Helm Chart & Push to CI-CD Repo') {
-        steps {
-            container('podman-agent') {
-                script {
-                    sh "git config user.email 'jenkins@${GITHUB_ORG}.com'"
-                    sh "git config user.name 'Jenkins CI Automation'"
-                    sh "sed -i 's|^    tag:.*|    tag: \"${IMAGE_TAG}\"|' ${HELM_CHART_PATH}/values.yaml"
-                    sh "git add ${HELM_CHART_PATH}/values.yaml"
-                    sh "git commit -m 'Update image tag to ${IMAGE_TAG} by Jenkins build #${env.BUILD_NUMBER}'"
-                    withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
-                        sh "git push https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_CICD}.git HEAD:main"
-                    }
+    stage('Update Helm Chart & Push to CI/CD Repo') {
+        container('podman-agent') {
+            script {
+                def imageTag = env.BUILD_NUMBER
+                
+                sh "git config user.email 'jenkins@${env.GITHUB_ORG}.com'"
+                sh "git config user.name 'Jenkins CI Automation'"
+                sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
+                sh "git add ${env.HELM_CHART_PATH}/values.yaml"
+                sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
+                withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
+                    sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
                 }
             }
         }
     }
-}
+    // ----------------- STAGES END -----------------
 
-post {
-    always {
+    // 'post' 블록 대신, 마지막에 항상 실행되는 코드를 추가
+    stage('Cleanup') {
         cleanWs()
     }
 }
