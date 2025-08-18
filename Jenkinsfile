@@ -1,161 +1,97 @@
-// Jenkinsfile (CI-CD 레포지토리용)
+// Jenkinsfile (CI-CD 레포지토리용 최종 버전)
 
 pipeline {
-  agent { label 'podman-agent' }   // JCasC의 pod 템플릿 라벨과 동일해야 함
+    // 에이전트는 Pod Template에 정의된 'podman-agent'를 사용
+    agent { label 'podman-agent' }
 
-  environment {
-    // GCP / Artifact Registry
-    GCP_PROJECT_ID    = 'kwon-cicd'
-    GCP_REGION        = 'asia-northeast3'
-    GCR_REGISTRY_HOST = "${GCP_REGION}-docker.pkg.dev"
-    GCR_REPO_PATH     = 'my-web-app-repo/web-server-backend'
-    IMAGE             = "${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_PATH}"
-    IMAGE_TAG         = "${env.BUILD_NUMBER}"
+    environment {
+        // GCP / Artifact Registry
+        GCP_PROJECT_ID    = 'kwon-cicd'
+        GCP_REGION        = 'asia-northeast3'
+        GCR_REGISTRY_HOST = "${GCP_REGION}-docker.pkg.dev"
+        GCR_REPO_PATH     = 'my-web-app-repo/web-server-backend'
+        IMAGE_NAME        = "${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_PATH}"
+        IMAGE_TAG         = "${env.BUILD_NUMBER}"
 
-    // GitHub & Helm
-    HELM_CHART_PATH   = 'helm-chart/my-web-app'
-    GITHUB_ORG        = 'KOSA-CloudArchitect'
-    GITHUB_REPO_WEB   = 'web-server'
-    GITHUB_REPO_CICD  = 'CI-CD'
-    GITHUB_USER       = 'kwon0905'
-  }
+        // GitHub & Helm
+        HELM_CHART_PATH   = 'helm-chart/my-web-app'
+        GITHUB_ORG        = 'KOSA-CloudArchitect'
+        GITHUB_REPO_WEB   = 'web-server'
+        GITHUB_REPO_CICD  = 'CI-CD'
+        GITHUB_USER       = 'kwon0905'
+    }
 
-
-  stages {
-    stage('Preflight (환경 확인)') {
-      steps {
-        container('podman-agent') {
-          sh '''
-            set -eu
-            echo "== Who am I =="; whoami || true
-            echo "== HOME =="; echo "$HOME"
-            echo "== Podman =="; podman --version
-            echo "== gcloud =="; gcloud --version
-          '''
+    stages {
+        stage('Checkout Web-Server Code') {
+            steps {
+                // 애플리케이션 소스 코드 클론
+                withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                    sh "git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git"
+                }
+            }
         }
-      }
-    }
 
-    stage('Checkout Web-Server Code') {
-      steps {
-        withCredentials([string(credentialsId: 'github-pat-for-cicd-job', variable: 'PAT')]) {
-          sh '''
-            set -eu
-            rm -rf "${GITHUB_REPO_WEB}" || true
-            git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git
-          '''
+        stage('Build and Push Application Image') {
+            steps {
+                // podman 명령어를 실행할 컨테이너를 명시
+                container('podman-agent') {
+                    dir("${GITHUB_REPO_WEB}/backend") {
+                        script {
+                            def fullImageName = "${IMAGE_NAME}:${IMAGE_TAG}"
+                            echo "Building and pushing image: ${fullImageName}"
+                            
+                            // Workload Identity가 자동으로 인증하므로 별도 로그인 불필요
+                            
+                            // 1. Podman으로 이미지 빌드
+                            sh "podman build -t ${fullImageName} ."
+
+                            // 2. Artifact Registry로 이미지 푸시
+                            sh "podman push ${fullImageName}"
+                        }
+                    }
+                }
+            }
         }
-      }
-    }
 
-    stage('Authenticate to Artifact Registry (Podman)') {
-      steps {
-        container('podman-agent') {
-          sh '''
-            set -eu
-            # JCasC에서 /home/jenkins/.gcp/key.json 로 Secret 마운트되어 있음
-            KEY_FILE="/home/jenkins/.gcp/key.json"
+        stage('Update Helm Chart in Git') {
+            steps {
+                // git, sed 명령어 실행을 위해 podman-agent 컨테이너 사용
+                container('podman-agent') {
+                    withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                        sh """
+                            set -e
+                            
+                            echo "Configuring Git user..."
+                            git config user.email "jenkins-ci@example.com"
+                            git config user.name  "Jenkins CI"
 
-            echo "== Activate service account =="
-            gcloud auth activate-service-account --key-file="$KEY_FILE"
+                            echo "Updating values.yaml with new image tag: ${IMAGE_TAG}"
+                            sed -i 's|^    tag:.*|    tag: "${IMAGE_TAG}"|' "${HELM_CHART_PATH}/values.yaml"
 
-            echo "== Podman login to Artifact Registry (oauth2 token) =="
-            TOKEN="$(gcloud auth print-access-token)"
-            # scheme 없이 호스트만 쓰는 게 안전합니다.
-            echo "$TOKEN" | podman login \
-              -u oauth2accesstoken --password-stdin \
-              ${GCR_REGISTRY_HOST}
-
-            echo "Login done for ${GCR_REGISTRY_HOST}"
-          '''
+                            echo "Committing and pushing changes to CI-CD repository..."
+                            git add "${HELM_CHART_PATH}/values.yaml"
+                            # 변경사항이 없으면 커밋하지 않도록 --allow-empty 옵션 제거
+                            git commit -m "Update image tag to ${IMAGE_TAG} for build #${IMAGE_TAG}"
+                            git push "https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_CICD}.git" HEAD:main
+                        """
+                    }
+                }
+            }
         }
-      }
     }
 
-    stage('Build & Push Docker Image (Podman)') {
-      steps {
-        container('podman-agent') {
-          dir("${GITHUB_REPO_WEB}/backend") {
-            sh '''
-              set -eu
-              FULL_IMAGE="${IMAGE}:${IMAGE_TAG}"
-              echo "== Build image =="
-              podman build -t "${FULL_IMAGE}" .
-
-              echo "== Push image =="
-              # 일시적 에러 대비하여 2회 재시도
-              n=0
-              until [ $n -ge 3 ]; do
-                if podman push "${FULL_IMAGE}"; then
-                  break
-                fi
-                n=$((n+1))
-                echo "Push failed... retry $n/3 in 5s"
-                sleep 5
-              done
-            '''
-          }
+    post {
+        always {
+            // 빌드 성공/실패와 관계없이 항상 워크스페이스 정리
+            // Workspace Cleanup 플러그인이 설치되어 있어야 함
+            cleanWs()
         }
-      }
-    }
-
-    stage('Update Helm values & Push to CI-CD Repo') {
-      steps {
-        container('podman-agent') {
-          sh '''
-            set -eu
-            git config user.email "jenkins@${GITHUB_ORG}.com"
-            git config user.name  "Jenkins CI Automation"
-
-            # values.yaml 의 tag 필드만 교체
-            sed -i "s|^\\s*tag:\\s*.*|    tag: \\"${IMAGE_TAG}\\"|g" "${HELM_CHART_PATH}/values.yaml"
-
-            # 변경이 있는 경우에만 커밋/푸시
-            if ! git diff --quiet -- "${HELM_CHART_PATH}/values.yaml"; then
-              git add "${HELM_CHART_PATH}/values.yaml"
-              git commit -m "Update image tag to ${IMAGE_TAG} by Jenkins build #${IMAGE_TAG}"
-              echo "Committing image tag bump to CI-CD repo..."
-              :
-            else
-              echo "No diff in values.yaml; skipping commit."
-            fi
-          '''
-
-          withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-            sh '''
-              set -eu
-              if git log -1 --pretty=%B | grep -q "Update image tag to ${IMAGE_TAG}"; then
-                echo "Pushing commit..."
-                git push "https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_CICD}.git" HEAD:main
-              else
-                echo "No commit to push."
-              fi
-            '''
-          }
+        success {
+            echo "CI Pipeline completed successfully! Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "Argo CD will now detect the changes and start deployment."
         }
-      }
-    }
-  }
-
-  post {
-    always {
-      script {
-        // Workspace Cleanup 플러그인이 없는 경우에도 실패하지 않도록 처리
-        try {
-          cleanWs()
-        } catch (err) {
-          echo "cleanWs() unavailable -> fallback to deleteDir()"
-          deleteDir()
+        failure {
+            echo "CI Pipeline failed."
         }
-      }
     }
-    failure {
-      echo 'CI/CD Pipeline failed!'
-    }
-    success {
-      echo "CI/CD Pipeline completed successfully! Image: ${IMAGE}:${IMAGE_TAG}"
-      echo 'Argo CD가 해당 Helm 차트를 감시 중이라면 자동 배포됩니다.'
-    }
-  }
 }
-
