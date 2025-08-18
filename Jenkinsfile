@@ -20,11 +20,6 @@ pipeline {
     GITHUB_USER       = 'kwon0905'
   }
 
-  options {
-    // 빌드 로그에 커맨드 출력
-    ansiColor('xterm')
-    timestamps()
-  }
 
   stages {
     stage('Preflight (환경 확인)') {
