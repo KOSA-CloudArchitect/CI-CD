@@ -1,27 +1,9 @@
-# final-jenkins-values.yaml (최종 결정판)
+# final-jenkins-values.yaml
 controller:
   serviceType: LoadBalancer
   
-  installPlugins:
-    - kubernetes
-    - workflow-aggregator
-    - git
-    - configuration-as-code
-    - google-oauth-credentials
+  # installPlugins 섹션을 비워두어 Helm Chart 기본값을 사용하도록 함
+  installPlugins: []
 
   JCasC:
-    defaultConfig: true
-    configScripts:
-      # JCasC 파일의 Key 이름은 중요하지 않으므로 단순하게 변경
-      k8s-cloud: |-
-        jenkins:
-          clouds:
-          - kubernetes:
-              name: "kubernetes"
-              namespace: "jenkins"
-              jenkinsUrl: "http://jenkins.jenkins.svc.cluster.local:8080"
-              credentialsId: "KUBERNETES_SERVICE_ACCOUNT"
-              skipTlsVerify: true
-              podLabels:
-              - key: "jenkins"
-                value: "slave"
+    enabled: false # JCasC도 비활성화하여 충돌 가능성 최소화
