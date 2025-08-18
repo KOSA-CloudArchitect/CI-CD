@@ -1,66 +1,47 @@
-// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile의 최종 내용
+// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile (Scripted Pipeline 형식)
 
-// pipeline { ... } 블록이 없는 상태여야 합니다.
-agent { label 'podman-agent' }
-
-environment {
-    // GCP 및 이미지 정보
-    GCP_PROJECT_ID    = 'kwon-cicd'
-    GCP_REGION        = 'asia-northeast3'
-    GCR_REGISTRY_HOST = "asia-northeast3-docker.pkg.dev"
-    GCR_REPO_NAME     = "my-web-app-repo/web-server-backend"
-    IMAGE_NAME        = "${GCR_REGISTRY_HOST}/${GCP_PROJECT_ID}/${GCR_REPO_NAME}"
-    IMAGE_TAG         = "${env.BUILD_NUMBER}"
-
-    // Helm 차트 및 GitHub 정보
-    HELM_CHART_PATH   = 'helm-chart/my-web-app'
-    GITHUB_ORG        = 'KOSA-CloudArchitect'
-    GITHUB_REPO_WEB   = 'web-server'
-    GITHUB_REPO_CICD  = 'CI-CD'
-    GITHUB_USER       = 'kwon0905'
-}
-
-stages {
-    stage('Checkout Web-Server Code') {
-        steps {
-            // 시작 스크립트에서 사용한 것과 동일한 Credential ID 사용
-            withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
-                sh "git clone https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_WEB}.git"
+node('podman-agent') {
+    
+    try {
+        stage('Checkout Web-Server Code') {
+            withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
             }
         }
-    }
 
-    stage('Build & Push Docker Image (Podman)') {
-        steps {
-            container('podman-agent') {
-                dir("${GITHUB_REPO_WEB}/backend") {
-                    sh "podman build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                    sh "podman push ${IMAGE_NAME}:${IMAGE_TAG}"
-                }
+        stage('Build & Push Docker Image (Podman)') {
+            dir("${env.GITHUB_REPO_WEB}/backend") {
+                def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
+                echo "Building with Podman: ${fullImageName}"
+                
+                sh "podman build -t ${fullImageName} ."
+                sh "podman push ${fullImageName}"
             }
         }
-    }
 
-    stage('Update Helm Chart & Push to CI-CD Repo') {
-        steps {
-            container('podman-agent') {
-                dir('.') { // CI-CD 레포지토리의 루트에서 실행
-                    sh "git config user.email 'jenkins@${GITHUB_ORG}.com'"
-                    sh "git config user.name 'Jenkins CI Automation'"
-                    sh "sed -i 's|^    tag:.*|    tag: \"${IMAGE_TAG}\"|' ${HELM_CHART_PATH}/values.yaml"
-                    sh "git add ${HELM_CHART_PATH}/values.yaml"
-                    sh "git commit -m 'Update image tag to ${IMAGE_TAG} by Jenkins build #${env.BUILD_NUMBER}'"
-                    withCredentials([string(credentialsId: 'github-pat-token-scm', variable: 'PAT')]) {
-                        sh "git push https://${GITHUB_USER}:${PAT}@github.com/${GITHUB_ORG}/${GITHUB_REPO_CICD}.git HEAD:main"
-                    }
-                }
+        stage('Update Helm Chart & Push to CI-CD Repo') {
+            def imageTag = env.BUILD_NUMBER
+            
+            sh "git config user.email 'jenkins@${env.GITHUB_ORG}.com'"
+            sh "git config user.name 'Jenkins CI Automation'"
+            sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
+            sh "git add ${env.HELM_CHART_PATH}/values.yaml"
+            sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
+            
+            withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
             }
         }
-    }
-}
-
-post {
-    always {
-        cleanWs()
+    } catch (e) {
+        // 빌드가 실패하면 에러를 출력하고 빌드를 실패 상태로 만듦
+        echo "Pipeline failed: ${e.getMessage()}"
+        currentBuild.result = 'FAILURE'
+        throw e
+    } finally {
+        // 빌드의 성공/실패 여부와 관계없이 항상 실행
+        stage('Cleanup') {
+            echo "Cleaning up workspace..."
+            cleanWs()
+        }
     }
 }
