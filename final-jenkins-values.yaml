@@ -2,8 +2,12 @@
 controller:
   serviceType: LoadBalancer
   
-  # installPlugins 섹션을 비워두어 Helm Chart 기본값을 사용하도록 함
+  # ❗ JNLP 에이전트 통신을 위한 서비스 설정을 명시적으로 추가
+  agentListenerService:
+    type: ClusterIP
+    servicePort: 50000
+
   installPlugins: []
 
   JCasC:
-    enabled: false # JCasC도 비활성화하여 충돌 가능성 최소화
+    enabled: false
