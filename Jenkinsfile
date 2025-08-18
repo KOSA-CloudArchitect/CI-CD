@@ -1,4 +1,4 @@
-// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile
+// GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile (Scripted Pipeline 형식)
 
 node('podman-agent') {
     
@@ -9,7 +9,6 @@ node('podman-agent') {
             }
         }
 
-        // ❗ podman 명령어를 사용하므로 container 블록 추가
         stage('Build & Push Docker Image (Podman)') {
             container('podman-agent') {
                 dir("${env.GITHUB_REPO_WEB}/backend") {
@@ -22,7 +21,6 @@ node('podman-agent') {
             }
         }
 
-        // ❗ git, sed 명령어는 podman-agent 컨테이너에 있으므로 container 블록 추가
         stage('Update Helm Chart & Push to CI-CD Repo') {
             container('podman-agent') {
                 def imageTag = env.BUILD_NUMBER
@@ -39,10 +37,12 @@ node('podman-agent') {
             }
         }
     } catch (e) {
+        // 빌드가 실패하면 에러를 출력하고 빌드를 실패 상태로 만듦
         echo "Pipeline failed: ${e.getMessage()}"
         currentBuild.result = 'FAILURE'
         throw e
     } finally {
+        // 빌드의 성공/실패 여부와 관계없이 항상 실행
         stage('Cleanup') {
             echo "Cleaning up workspace..."
             cleanWs()
