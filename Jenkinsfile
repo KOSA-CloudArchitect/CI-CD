@@ -2,17 +2,17 @@
 
 node('podman-agent') {
     try {
-        // ✨ CI-CD 저장소를 'ci-cd-repo' 디렉터리에 복제합니다.
+        // ✨ 'ci-cd-repo' 디렉터리에 CI-CD 저장소를 복제합니다.
         stage('Checkout CI-CD Repo') {
-            withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git ci-cd-repo"
+            dir('ci-cd-repo') {
+                git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git"
             }
         }
         
-        // ✨ Web-Server 저장소를 'web-server' 디렉터리에 복제합니다.
+        // ✨ 'web-server' 디렉터리에 Web-Server 저장소를 복제합니다.
         stage('Checkout Web-Server Code') {
-            withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
+            dir('web-server') {
+                git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
             }
         }
 
@@ -34,7 +34,6 @@ node('podman-agent') {
             }
         }
 
-        // ✨ 'ci-cd-repo' 디렉터리에서 작업을 수행하도록 dir 블록을 추가합니다.
         stage('Update Helm Chart & Push') {
             container('podman-agent') {
                 dir("ci-cd-repo") {
