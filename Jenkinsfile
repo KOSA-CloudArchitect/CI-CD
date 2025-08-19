@@ -36,15 +36,18 @@ node('podman-agent') {
 
         stage('Update Helm Chart & Push') {
             container('podman-agent') {
-                def imageTag = env.BUILD_NUMBER
-                sh "git config user.email 'jenkins@example.com'"
-                sh "git config user.name 'Jenkins CI'"
-                sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
-                sh "git add ${env.HELM_CHART_PATH}/values.yaml"
-                sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
-                withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-                    sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
-                }
+                // CI-CD 저장소 디렉토리로 이동
+                dir("${env.GITHUB_REPO_CICD}") { // <--- 이 라인을 추가
+                    def imageTag = env.BUILD_NUMBER
+                    sh "git config user.email 'jenkins@example.com'"
+                    sh "git config user.name 'Jenkins CI'"
+                    sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
+                    sh "git add ${env.HELM_CHART_PATH}/values.yaml"
+                    sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
+                    withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                        sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
+                    }
+                } // <--- 이 라인을 추가
             }
         }
     } catch (e) {
