@@ -70,7 +70,7 @@ pipeline {
                         def imageTag = env.BUILD_NUMBER
                         sh "git config user.email 'jenkins@example.com'"
                         sh "git config user.name 'Jenkins CI'"
-                        sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
+                        sh "sed -i -E 's/^\\s*tag:.*/    tag: \"${imageTag}\"/' ${env.HELM_CHART_PATH}/values.yaml"
                         sh "git add ${env.HELM_CHART_PATH}/values.yaml"
                         sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
                         withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
