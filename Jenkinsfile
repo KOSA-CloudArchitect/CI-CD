@@ -70,6 +70,7 @@ pipeline {
             steps {
                 script {
                     // ... (내부 로직은 이전과 동일)
+                    dir(env.WORKSPACE) {
                     def imageTag = env.BUILD_NUMBER
                     sh "git config user.email 'jenkins@example.com'"
                     sh "git config user.name 'Jenkins CI'"
@@ -80,9 +81,10 @@ pipeline {
                         sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
                     }
                 }
-            }
-        }
-    }
+            }  
+         }
+      }
+  }
 
     post {
         always {
