@@ -43,13 +43,18 @@ pipeline {
         // ✨ 3단계: Podman으로 컨테이너 이미지 빌드 및 푸시
         stage('Build & Push Docker Image') {
             steps {
+                sh 'echo "===== DEBUG: Printing all environment variables ====="'
+                sh 'printenv | sort'
+                sh 'echo "=================================================="'
                 dir("web-server/backend") {
                     script {
                         // ... (내부 로직은 이전과 동일)
                         def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
+                        echo "DEBUG: Generated fullImageName is [${fullImageName}]"
                         echo "Building with Podman: ${fullImageName}"
                         withCredentials([file(credentialsId: 'gcp-sa-key', variable: 'GCP_KEY_FILE')]) {
                             sh "gcloud auth activate-service-account --key-file=${GCP_KEY_FILE}"
+                            echo "DEBUG: Registry host for login is [${env.GCR_REGISTRY_HOST}]"
                             sh "gcloud auth print-access-token | podman login -u oauth2accesstoken --password-stdin ${env.GCR_REGISTRY_HOST}"
                             sh "podman build -t ${fullImageName} ."
                             sh "podman push ${fullImageName}"
