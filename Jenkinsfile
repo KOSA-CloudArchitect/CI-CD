@@ -2,13 +2,14 @@
 
 node('podman-agent') {
     try {
-        // ✨ CI-CD 저장소 체크아웃 단계를 다시 추가합니다.
+        // ✨ CI-CD 저장소를 'ci-cd-repo' 디렉터리에 복제합니다.
         stage('Checkout CI-CD Repo') {
             withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git ."
+                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git ci-cd-repo"
             }
         }
         
+        // ✨ Web-Server 저장소를 'web-server' 디렉터리에 복제합니다.
         stage('Checkout Web-Server Code') {
             withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
                 sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
@@ -33,16 +34,19 @@ node('podman-agent') {
             }
         }
 
+        // ✨ 'ci-cd-repo' 디렉터리에서 작업을 수행하도록 dir 블록을 추가합니다.
         stage('Update Helm Chart & Push') {
             container('podman-agent') {
-                def imageTag = env.BUILD_NUMBER
-                sh "git config user.email 'jenkins@example.com'"
-                sh "git config user.name 'Jenkins CI'"
-                sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
-                sh "git add ${env.HELM_CHART_PATH}/values.yaml"
-                sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
-                withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
-                    sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
+                dir("ci-cd-repo") {
+                    def imageTag = env.BUILD_NUMBER
+                    sh "git config user.email 'jenkins@example.com'"
+                    sh "git config user.name 'Jenkins CI'"
+                    sh "sed -i 's|^    tag:.*|    tag: \"${imageTag}\"|' ${env.HELM_CHART_PATH}/values.yaml"
+                    sh "git add ${env.HELM_CHART_PATH}/values.yaml"
+                    sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
+                    withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                        sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
+                    }
                 }
             }
         }
