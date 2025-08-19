@@ -1,12 +1,13 @@
 // GitHub의 CI-CD 레포지토리에 저장될 Jenkinsfile
 
-// 젠킨스 에이전트 내에서 모든 작업이 이루어지므로, node 블록은 제거됩니다.
 node('podman-agent') {
     try {
-        // ✨ 이 단계는 Jenkins Job 스크립트에서 수행되므로 제거합니다.
-        // stage('Checkout CI-CD Repo') {
-        //   sh 'git status'
-        // }
+        // ✨ CI-CD 저장소 체크아웃 단계를 다시 추가합니다.
+        stage('Checkout CI-CD Repo') {
+            withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                sh "git clone https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git ."
+            }
+        }
         
         stage('Checkout Web-Server Code') {
             withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
