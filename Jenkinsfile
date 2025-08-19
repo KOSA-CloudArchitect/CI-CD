@@ -1,4 +1,4 @@
-// 최종 디버깅 버전 선언형 파이프라인 (Declarative Pipeline)
+// 최종 완성된 선언형 파이프라인 (Declarative Pipeline)
 pipeline {
     agent {
         kubernetes {
@@ -7,12 +7,10 @@ pipeline {
         }
     }
 
-    // 옵션: Jenkins의 기본 SCM 체크아웃 동작을 비활성화합니다.
     options {
         skipDefaultCheckout true
     }
 
-    // 파이프라인 전체에서 사용할 환경 변수를 정의합니다.
     environment {
         GCP_PROJECT_ID    = 'kwon-cicd'
         GCP_REGION        = 'asia-northeast3'
@@ -49,7 +47,6 @@ pipeline {
                     script {
                         def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
                         echo "Building with Podman: ${fullImageName}"
-
                         withCredentials([file(credentialsId: 'gcp-sa-key', variable: 'GCP_KEY_FILE')]) {
                             sh "gcloud auth activate-service-account --key-file=${GCP_KEY_FILE}"
                             sh "gcloud auth print-access-token | podman login -u oauth2accesstoken --password-stdin ${env.GCR_REGISTRY_HOST}"
@@ -61,23 +58,14 @@ pipeline {
             }
         }
 
-        // 4단계: Helm Chart 업데이트 및 Git 푸시 (상세 디버깅 추가)
+        // 4단계: Helm Chart 업데이트 및 Git 푸시
         stage('Update Helm Chart & Push') {
             steps {
                 dir(env.WORKSPACE) {
                     script {
-                        // ---▼▼▼  원인 파악을 위한 진단 명령어 ▼▼▼---
-                        sh 'echo "--- DEBUG INFO START ---"'
-                        sh 'echo "1. Current Directory:"'
-                        sh 'pwd'
-                        sh 'echo "\n2. Current User:"'
-                        sh 'whoami'
-                        sh 'echo "\n3. Directory Listing (Permissions & .git folder):"'
-                        sh 'ls -la'
-                        sh 'echo "\n4. Git Status Check:"'
-                        sh 'git status || echo "!!! git status command failed"'
-                        sh 'echo "--- DEBUG INFO END ---"'
-                        // ---▲▲▲ 진단 명령어 끝 ▲▲▲---
+                        // ---▼▼▼  'dubious ownership' 문제 해결을 위한 코드  ▼▼▼---
+                        sh "git config --global --add safe.directory ${env.WORKSPACE}"
+                        // ---▲▲▲ 여기까지가 핵심 해결 코드입니다 ▲▲▲---
 
                         def imageTag = env.BUILD_NUMBER
                         sh "git config user.email 'jenkins@example.com'"
