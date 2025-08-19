@@ -2,22 +2,21 @@
 
 node('podman-agent') {
     try {
-        // ✨ 'ci-cd-repo' 디렉터리에 CI-CD 저장소를 복제합니다.
-        stage('Checkout CI-CD Repo') {
-            dir('ci-cd-repo') {
-                git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git"
+        container('podman-agent') {
+            // ✨ 모든 Git 작업을 이 컨테이너에서 수행합니다.
+            stage('Checkout CI-CD Repo') {
+                dir('ci-cd-repo') {
+                    git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git"
+                }
             }
-        }
-        
-        // ✨ 'web-server' 디렉터리에 Web-Server 저장소를 복제합니다.
-        stage('Checkout Web-Server Code') {
-            dir('web-server') {
-                git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
+            
+            stage('Checkout Web-Server Code') {
+                dir('web-server') {
+                    git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
+                }
             }
-        }
 
-        stage('Build & Push Docker Image') {
-            container('podman-agent') {
+            stage('Build & Push Docker Image') {
                 dir("${env.GITHUB_REPO_WEB}/backend") {
                     def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
                     echo "Building with Podman: ${fullImageName}"
@@ -32,10 +31,8 @@ node('podman-agent') {
                     }
                 }
             }
-        }
-
-        stage('Update Helm Chart & Push') {
-            container('podman-agent') {
+        
+            stage('Update Helm Chart & Push') {
                 dir("ci-cd-repo") {
                     def imageTag = env.BUILD_NUMBER
                     sh "git config user.email 'jenkins@example.com'"
@@ -48,7 +45,7 @@ node('podman-agent') {
                     }
                 }
             }
-        }
+        } // container('podman-agent') 블록의 끝
     } catch (e) {
         currentBuild.result = 'FAILURE'
         throw e
