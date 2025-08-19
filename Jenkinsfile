@@ -63,9 +63,7 @@ pipeline {
             steps {
                 dir(env.WORKSPACE) {
                     script {
-                        // ---▼▼▼  'dubious ownership' 문제 해결을 위한 코드  ▼▼▼---
                         sh "git config --global --add safe.directory ${env.WORKSPACE}"
-                        // ---▲▲▲ 여기까지가 핵심 해결 코드입니다 ▲▲▲---
 
                         def imageTag = env.BUILD_NUMBER
                         sh "git config user.email 'jenkins@example.com'"
@@ -73,9 +71,12 @@ pipeline {
                         sh "sed -i -E 's/^\\s*tag:.*/    tag: \"${imageTag}\"/' ${env.HELM_CHART_PATH}/values.yaml"
                         sh "git add ${env.HELM_CHART_PATH}/values.yaml"
                         sh "git commit -m 'Update image tag to ${imageTag} by Jenkins build #${imageTag}'"
-                        withCredentials([string(credentialsId: 'github-pat-token', variable: 'PAT')]) {
+                        
+                        
+                        withCredentials([usernamePassword(credentialsId: 'github-pat-token', passwordVariable: 'PAT', usernameVariable: 'GIT_USER')]) {
                             sh "git push https://${env.GITHUB_USER}:${PAT}@github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git HEAD:main"
                         }
+                        
                     }
                 }
             }
