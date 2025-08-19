@@ -3,7 +3,7 @@
 node('podman-agent') {
     try {
         container('podman-agent') {
-            // ✨ 모든 Git 작업을 이 컨테이너에서 수행합니다.
+            // ✨ 모든 Git 작업과 빌드 작업을 이 컨테이너에서 수행합니다.
             stage('Checkout CI-CD Repo') {
                 dir('ci-cd-repo') {
                     git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_CICD}.git"
