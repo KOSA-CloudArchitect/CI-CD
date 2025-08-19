@@ -14,14 +14,15 @@ pipeline {
 
     environment {
         GCP_PROJECT_ID    = 'kwon-cicd'
-        // ... (이하 다른 환경 변수들은 동일)
+        GCP_REGION        = 'asia-northeast3'
+        GCR_REGISTRY_HOST = "asia-northeast3-docker.pkg.dev" // <<< 이 변수가 누락되었습니다.
+        GCR_REPO_NAME     = "my-web-app-repo/web-server-backend" // <<< 이 변수가 누락되었습니다.
         HELM_CHART_PATH   = 'helm-chart/my-web-app'
         GITHUB_ORG        = 'KOSA-CloudArchitect'
         GITHUB_REPO_WEB   = 'web-server'
         GITHUB_REPO_CICD  = 'CI-CD'
-        GITHUB_USER       = 'kwon0905'
+        GITHUB_USER       = 'kwon0905' // 이전 로그를 보니 GITHUB_USER가 kwon0905 였습니다.
     }
-
     stages {
         // ✨ *새로운* 1단계: CI-CD 레포지토리 직접 체크아웃
         stage('Checkout CI-CD Repo') {
