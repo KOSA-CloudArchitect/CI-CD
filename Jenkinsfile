@@ -35,7 +35,7 @@ pipeline {
         stage('Checkout Web-Server Code') {
             steps {
                 dir('web-server') {
-                    git branch: 'main', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
+                    git branch: 'ci-cd-test', credentialsId: 'github-pat-token', url: "https://github.com/${env.GITHUB_ORG}/${env.GITHUB_REPO_WEB}.git"
                 }
             }
         }
@@ -43,7 +43,7 @@ pipeline {
         // 3단계: Podman으로 컨테이너 이미지 빌드 및 푸시
         stage('Build & Push Docker Image') {
             steps {
-                dir("web-server/backend") {
+                dir("web-server") {
                     script {
                         def fullImageName = "${env.GCR_REGISTRY_HOST}/${env.GCP_PROJECT_ID}/${env.GCR_REPO_NAME}:${env.BUILD_NUMBER}"
                         echo "Building with Podman: ${fullImageName}"
