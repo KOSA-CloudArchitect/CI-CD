@@ -7,7 +7,7 @@ image:
   repository: asia-northeast3-docker.pkg.dev/kwon-cicd/my-web-app-repo/web-server-backend
   pullPolicy: IfNotPresent
   # Jenkins가 이 태그를 빌드 번호로 업데이트합니다.
-  tag: "1"
+    tag: "41"
 
 service:
   type: ClusterIP
