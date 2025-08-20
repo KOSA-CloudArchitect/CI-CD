@@ -1,5 +1,6 @@
 # values.yaml
 # 이 파일은 Argo CD가 참조하는 핵심 설정 파일입니다.
+
 replicaCount: 1
 
 image:
@@ -12,6 +13,7 @@ service:
   type: ClusterIP
   port: 8080
 
+# CPU와 메모리 리소스 요청량 및 제한량 설정
 resources:
   limits:
     cpu: 500m
