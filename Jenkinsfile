@@ -12,13 +12,11 @@ spec:
     args:
     - "\$(JENKINS_SECRET)"
     - "\$(JENKINS_NAME)"
-    # --- [수정] Agent가 Controller를 찾아갈 주소를 강제로 지정 ---
     env:
     - name: JENKINS_URL
       value: "http://172.16.179.121:8080"
     - name: JENKINS_TUNNEL
       value: "172.16.179.121:50000"
-    # ----------------------------------------------------
   - name: node
     image: node:18-slim
     command:
@@ -46,6 +44,7 @@ spec:
     stages {
         stage('Checkout Application Code') {
             steps {
+                // web-server의 소스 코드를 'web-server-src'라는 폴더에 체크아웃
                 dir('web-server-src') {
                     git branch: 'aws-test',
                         credentialsId: 'github-pat',
@@ -86,13 +85,9 @@ spec:
 
         stage('Update Manifest') {
             steps {
+                // 이 단계는 Jenkins가 기본 체크아웃한 CI-CD 리포지토리의 내용을 수정
                 sshagent(credentials: [GITOPS_CREDENTIAL_ID]) {
                     sh """
-                        # CI-CD 리포지토리를 별도의 폴더에 클론
-                        git clone git@github.com:KOSA-CloudArchitect/CI-CD.git ci-cd-repo
-                        cd ci-cd-repo
-                        git checkout aws-test
-
                         # Helm Chart의 values.yaml 수정
                         sed -i "s/tag: .*/tag: \\"${env.IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_REPOSITORY_URI}|g" helm-chart/my-web-app/values.yaml
