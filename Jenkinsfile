@@ -1,5 +1,4 @@
 pipeline {
-    // agent를 YAML로 직접 정의
     agent {
         kubernetes {
             label 'podman-node-agent'
@@ -38,18 +37,17 @@ spec:
     stages {
         stage('Checkout Application Code') {
             steps {
-                // web-server의 소스 코드를 'web-server-src'라는 폴더에 체크아웃
-                git branch: 'aws-test',
-                    credentialsId: 'github-pat',
-                    url: 'https://github.com/KOSA-CloudArchitect/web-server.git',
-                    dir: 'web-server-src'
+                dir('web-server-src') {
+                    git branch: 'aws-test',
+                        credentialsId: 'github-pat',
+                        url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
+                }
             }
         }
 
         stage('Build Application') {
             steps {
                 dir('web-server-src') {
-                    // 'node' 컨테이너 안에서 Node.js 빌드 명령어 실행
                     container('node') {
                         sh 'npm install'
                     }
@@ -60,7 +58,6 @@ spec:
         stage('Build & Push Container Image') {
             steps {
                 dir('web-server-src') {
-                    // 'podman' 컨테이너 안에서 이미지 빌드 및 푸시 실행
                     container('podman') {
                         script {
                             def imageTag = "build-${BUILD_NUMBER}"
