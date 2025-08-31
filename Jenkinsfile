@@ -12,6 +12,13 @@ spec:
     args:
     - "\$(JENKINS_SECRET)"
     - "\$(JENKINS_NAME)"
+    # --- [수정] Agent가 Controller를 찾아갈 주소를 강제로 지정 ---
+    env:
+    - name: JENKINS_URL
+      value: "http://172.16.179.121:8080"
+    - name: JENKINS_TUNNEL
+      value: "172.16.179.121:50000"
+    # ----------------------------------------------------
   - name: node
     image: node:18-slim
     command:
