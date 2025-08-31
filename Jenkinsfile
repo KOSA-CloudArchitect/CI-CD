@@ -9,7 +9,9 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args: \$(JENKINS_SECRET) \$(JENKINS_NAME)
+    args:
+    - "\$(JENKINS_SECRET)"
+    - "\$(JENKINS_NAME)"
   - name: node
     image: node:18-slim
     command:
