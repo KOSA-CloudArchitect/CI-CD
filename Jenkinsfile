@@ -14,14 +14,14 @@ pipeline {
     stages {
         stage('Checkout Application Code') {
             steps {
-                // 'web-server'의 소스 코드를 'web-server-src'라는 폴더에 체크아웃
-                git branch: 'aws-test',
-                    credentialsId: 'github-pat',
-                    url: 'https://github.com/KOSA-CloudArchitect/web-server.git',
-                    dir: 'web-server-src'
+                // 'dir' 단계로 폴더를 먼저 만들고, 그 안에서 'git' 실행
+                dir('web-server-src') {
+                    git branch: 'aws-test',
+                        credentialsId: 'github-pat',
+                        url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
+                }
             }
         }
-
         stage('Build Application') {
             steps {
                 // web-server-src 폴더로 이동하여 작업 수행
