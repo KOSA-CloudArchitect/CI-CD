@@ -11,8 +11,8 @@ spec:
   - name: jnlp
     image: jenkins/inbound-agent:latest
     args:
-    - "\\\$\\{JENKINS_SECRET\\}"
-    - "\\\$\\{JENKINS_NAME\\}"
+    - "\${JENKINS_SECRET}"
+    - "\${JENKINS_NAME}"
   - name: node
     image: node:18-slim
     command: ["sleep"]
@@ -71,7 +71,6 @@ spec:
             steps {
                 container('aws-cli') {
                     script {
-                        // ECR 로그인 명령을 Podman 컨테이너에서 실행하도록 환경 변수로 전달
                         env.ECR_PASSWORD = sh(
                             script: "aws ecr get-login-password --region ${AWS_REGION}",
                             returnStdout: true
