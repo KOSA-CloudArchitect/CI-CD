@@ -9,6 +9,7 @@ spec:
   # [추가] Jenkins Controller와 동일한 서비스 계정 사용을 명시
   # 이 서비스 계정은 EKS에 접근 권한이 있도록 aws-auth에 등록되어 있어야 함
   # 이전에 jenkins-rbac.yaml로 생성했음.
+  namespace: jenkins
   serviceAccountName: jenkins
   containers:
   - name: jnlp
