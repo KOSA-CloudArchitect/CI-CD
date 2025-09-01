@@ -40,6 +40,14 @@ spec:
     }
 
     stages {
+       stage('Debug IAM Role') {
+           steps {
+               container('aws-cli') {
+                   sh 'aws sts get-caller-identity'
+               }
+           }
+       }
+
         stage('Checkout Application Code') {
             steps {
                 dir('web-server-src') {
