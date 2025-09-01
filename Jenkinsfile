@@ -34,7 +34,7 @@ spec:
     environment {
         AWS_REGION = 'ap-northeast-2'
         ECR_REPOSITORY_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server'
-        GITOPS_CREDENTIAL_ID = 'gitops-repo-deploy-key'
+        GITOPS_CREDENTIAL_ID = 'gitops-repo-pat'
     }
 
     stages {
@@ -66,14 +66,14 @@ spec:
                     container('aws-cli') {
                         ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
                     }
-                    
+
                     dir('web-server-src/backend') {
                         container('podman') {
                             sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
-                            
+
                             def imageTag = "build-${BUILD_NUMBER}"
                             def fullImageName = "${ECR_REPOSITORY_URI}:${imageTag}"
-                            
+
                             sh "podman build -t ${fullImageName} ."
                             sh "podman push ${fullImageName}"
 
@@ -87,20 +87,24 @@ spec:
 
         stage('Update Manifest') {
             steps {
-                sshagent(credentials: [GITOPS_CREDENTIAL_ID]) {
+                withCredentials([string(credentialsId: GITOPS_CREDENTIAL_ID, variable: 'GITOPS_PAT')]) {
                     sh """
-                        git clone git@github.com:KOSA-CloudArchitect/CI-CD.git ci-cd-repo
+                        # https 방식으로 리포지토리 복제
+                        git clone https://github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
                         cd ci-cd-repo
                         git checkout aws-test
 
+                        git config --global user.email "jenkins@example.com"
+                        git config --global user.name "Jenkins CI"
+                        
                         sed -i "s/tag: .*/tag: \\"${env.IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_REPOSITORY_URI}|g" helm-chart/my-web-app/values.yaml
 
-                        git config --global user.email "jenkins@example.com"
-                        git config --global user.name "Jenkins CI"
                         git add helm-chart/my-web-app/values.yaml
                         git commit -m "Deploy web-server new image: ${env.IMAGE_NAME}"
-                        git push
+                        
+                        # 깃허브 토큰을 사용해 푸시
+                        git push https://${GITOPS_PAT}@github.com/KOSA-CloudArchitect/CI-CD.git
                     """
                 }
             }
