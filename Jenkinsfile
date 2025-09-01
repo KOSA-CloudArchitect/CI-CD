@@ -11,8 +11,8 @@ spec:
   - name: jnlp
     image: jenkins/inbound-agent:latest
     args:
-    - "\\$(JENKINS_SECRET)"
-    - "\\$(JENKINS_NAME)"
+    - "\\\$\\{JENKINS_SECRET\\}"
+    - "\\\$\\{JENKINS_NAME\\}"
   - name: node
     image: node:18-slim
     command: ["sleep"]
@@ -84,13 +84,8 @@ spec:
                             def imageTag = "build-${BUILD_NUMBER}"
                             def fullImageName = "${ECR_REPOSITORY_URI}:${imageTag}"
 
-                            // AWS ECR 로그인
                             sh "echo '${env.ECR_PASSWORD}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
-
-                            // 이미지 빌드
                             sh "podman build -t ${fullImageName} ."
-
-                            // 이미지 푸시
                             sh "podman push ${fullImageName}"
 
                             env.IMAGE_NAME = fullImageName
