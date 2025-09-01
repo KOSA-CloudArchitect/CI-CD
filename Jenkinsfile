@@ -2,43 +2,33 @@ pipeline {
     agent {
         kubernetes {
             label 'podman-node-agent'
+            // [수정] YAML 정의 부분의 들여쓰기 및 구조를 올바르게 수정
             yaml """
 apiVersion: v1
 kind: Pod
 spec:
+  # Agent Pod가 jenkins 네임스페이스의 default 서비스 계정 권한을 사용하도록 지정
+  serviceAccountName: default 
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
     args:
     - "\$(JENKINS_SECRET)"
     - "\$(JENKINS_NAME)"
-    env:
-    - name: JENKINS_URL
-      value: "http://172.16.179.121:8080"
-    - name: JENKINS_TUNNEL
-      value: "172.16.179.121:50000"
   - name: node
     image: node:18-slim
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ["sleep"]
+    args: ["99d"]
   - name: podman
     image: quay.io/podman/stable
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ["sleep"]
+    args: ["99d"]
     securityContext:
       privileged: true
-  # --- [추가] AWS CLI 명령어를 실행할 전용 컨테이너 ---
   - name: aws-cli
     image: amazon/aws-cli:latest
-    command:
-    - sleep
-    args:
-    - 99d
-  # -----------------------------------------------
+    command: ["sleep"]
+    args: ["99d"]
 """
         }
     }
@@ -73,23 +63,24 @@ spec:
 
         stage('Build & Push Container Image') {
             steps {
-                // [수정] ECR 로그인과 이미지 빌드/푸시를 분리
-                script {
-                    def ecrLoginPassword
-                    // 1. 'aws-cli' 컨테이너에서 ECR 비밀번호를 가져와 변수에 저장
-                    container('aws-cli') {
-                        ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
+                // [수정] script 블록과 불필요한 dir 단계를 제거하여 단순화
+                container('aws-cli') {
+                    script {
+                        // ECR 비밀번호를 가져와 Jenkins 환경 변수에 저장
+                        env.ECR_PASSWORD = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
                     }
-
-                    // 2. web-server-src/backend 폴더로 이동하여 이미지 관련 작업 수행
-                    dir('web-server-src/backend') {
-                        // 3. 'podman' 컨테이너에서 위에서 얻은 비밀번호로 로그인, 빌드, 푸시 실행
-                        container('podman') {
-                            // Jenkins 스크립트 보안 때문에 비밀번호를 직접 사용
-                            sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
-                            
+                }
+                
+                dir('web-server-src/backend') {
+                    container('podman') {
+                        script {
                             def imageTag = "build-${BUILD_NUMBER}"
                             def fullImageName = "${ECR_REPOSITORY_URI}:${imageTag}"
+                            
+                            // withCredentials를 사용하여 비밀번호를 안전하게 주입
+                            withCredentials([string(credentialsId: 'ecr-login-password', variable: 'UNUSED')]) {
+                                sh "echo '${env.ECR_PASSWORD}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
+                            }
                             
                             sh "podman build -t ${fullImageName} ."
                             sh "podman push ${fullImageName}"
