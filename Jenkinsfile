@@ -44,9 +44,9 @@ spec:
     stages {
         stage('Checkout Application Code') {
             steps {
-                // web-server의 소스 코드를 'web-server-src'라는 폴더에 체크아웃
                 dir('web-server-src') {
-                    git branch: 'aws-test',
+                    // [수정] web-server 리포지토리의 실제 브랜치 이름 (main으로 변경)
+                    git branch: 'main', 
                         credentialsId: 'github-pat',
                         url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
                 }
@@ -85,19 +85,19 @@ spec:
 
         stage('Update Manifest') {
             steps {
-                // 이 단계는 Jenkins가 기본 체크아웃한 CI-CD 리포지토리의 내용을 수정
+                // 이 단계는 Jenkins가 기본 체크아웃한 CI-CD 리포지토리에서 실행됩니다.
                 sshagent(credentials: [GITOPS_CREDENTIAL_ID]) {
                     sh """
                         # Helm Chart의 values.yaml 수정
                         sed -i "s/tag: .*/tag: \\"${env.IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_REPOSITORY_URI}|g" helm-chart/my-web-app/values.yaml
 
-                        # Git 설정 및 Push
+                        # Git 설정 및 CI-CD 리포지토리의 aws-test 브랜치에 Push
                         git config --global user.email "jenkins@example.com"
                         git config --global user.name "Jenkins CI"
                         git add helm-chart/my-web-app/values.yaml
                         git commit -m "Deploy web-server new image: ${env.IMAGE_NAME}"
-                        git push
+                        git push origin HEAD:aws-test
                     """
                 }
             }
