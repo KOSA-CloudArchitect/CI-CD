@@ -18,7 +18,7 @@ spec:
     command: ["sleep"]
     args: ["99d"]
   - name: podman
-    image: quay.io/podman/stable
+    image: quay.io/podman/stable:latest
     command: ["sleep"]
     args: ["99d"]
     securityContext:
@@ -67,10 +67,11 @@ spec:
             }
         }
 
-        stage('Build & Push Container Image') {
+        stage('ECR Login') {
             steps {
                 container('aws-cli') {
                     script {
+                        // ECR 로그인 명령을 Podman 컨테이너에서 실행하도록 환경 변수로 전달
                         env.ECR_PASSWORD = sh(
                             script: "aws ecr get-login-password --region ${AWS_REGION}",
                             returnStdout: true
@@ -78,13 +79,20 @@ spec:
                     }
                 }
 
+                container('podman') {
+                    sh "echo '${env.ECR_PASSWORD}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
+                }
+            }
+        }
+
+        stage('Build & Push Container Image') {
+            steps {
                 dir('web-server-src/backend') {
                     container('podman') {
                         script {
                             def imageTag = "build-${BUILD_NUMBER}"
                             def fullImageName = "${ECR_REPOSITORY_URI}:${imageTag}"
 
-                            sh "echo '${env.ECR_PASSWORD}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
                             sh "podman build -t ${fullImageName} ."
                             sh "podman push ${fullImageName}"
 
@@ -96,7 +104,7 @@ spec:
             }
         }
 
-        stage('Update Manifest') {
+        stage('Update Helm Manifest') {
             steps {
                 sshagent(credentials: [GITOPS_CREDENTIAL_ID]) {
                     sh """
