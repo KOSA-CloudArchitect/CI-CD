@@ -31,6 +31,14 @@ spec:
     - 99d
     securityContext:
       privileged: true
+  # --- [추가] AWS CLI 명령어를 실행할 전용 컨테이너 ---
+  - name: aws-cli
+    image: amazon/aws-cli:latest
+    command:
+    - sleep
+    args:
+    - 99d
+  # -----------------------------------------------
 """
         }
     }
@@ -42,12 +50,8 @@ spec:
     }
 
     stages {
-        stage('Checkout Source & Config') {
+        stage('Checkout Application Code') {
             steps {
-                // 1. CI-CD 리포지토리(Jenkinsfile, Dockerfile 등)는 기본으로 체크아웃됨
-                checkout scm
-
-                // 2. web-server의 소스 코드를 'web-server-src' 폴더에 체크아웃
                 dir('web-server-src') {
                     git branch: 'main',
                         credentialsId: 'github-pat',
@@ -58,7 +62,6 @@ spec:
 
         stage('Build Application') {
             steps {
-                // web-server-src/backend 폴더로 이동하여 빌드
                 dir('web-server-src/backend') {
                     container('node') {
                         sh 'npm install'
@@ -70,17 +73,25 @@ spec:
 
         stage('Build & Push Container Image') {
             steps {
-                // web-server-src/backend 폴더로 이동하여 이미지 빌드
-                dir('web-server-src/backend') {
-                    container('podman') {
-                        script {
+                // [수정] ECR 로그인과 이미지 빌드/푸시를 분리
+                script {
+                    def ecrLoginPassword
+                    // 1. 'aws-cli' 컨테이너에서 ECR 비밀번호를 가져와 변수에 저장
+                    container('aws-cli') {
+                        ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
+                    }
+
+                    // 2. web-server-src/backend 폴더로 이동하여 이미지 관련 작업 수행
+                    dir('web-server-src/backend') {
+                        // 3. 'podman' 컨테이너에서 위에서 얻은 비밀번호로 로그인, 빌드, 푸시 실행
+                        container('podman') {
+                            // Jenkins 스크립트 보안 때문에 비밀번호를 직접 사용
+                            sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
+                            
                             def imageTag = "build-${BUILD_NUMBER}"
                             def fullImageName = "${ECR_REPOSITORY_URI}:${imageTag}"
-                            // [수정] CI-CD 리포지토리에 있는 Dockerfile 경로를 -f 옵션으로 지정
-                            def dockerfilePath = '../../dockerfiles/web-server/Dockerfile'
-
-                            sh "aws ecr get-login-password --region ${AWS_REGION} | podman login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
-                            sh "podman build -t ${fullImageName} -f ${dockerfilePath} ."
+                            
+                            sh "podman build -t ${fullImageName} ."
                             sh "podman push ${fullImageName}"
 
                             env.IMAGE_NAME = fullImageName
@@ -93,9 +104,12 @@ spec:
 
         stage('Update Manifest') {
             steps {
-                // 이 단계는 CI-CD 리포지토리의 내용을 수정
                 sshagent(credentials: [GITOPS_CREDENTIAL_ID]) {
                     sh """
+                        git clone git@github.com:KOSA-CloudArchitect/CI-CD.git ci-cd-repo
+                        cd ci-cd-repo
+                        git checkout aws-test
+
                         sed -i "s/tag: .*/tag: \\"${env.IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_REPOSITORY_URI}|g" helm-chart/my-web-app/values.yaml
 
@@ -103,7 +117,7 @@ spec:
                         git config --global user.name "Jenkins CI"
                         git add helm-chart/my-web-app/values.yaml
                         git commit -m "Deploy web-server new image: ${env.IMAGE_NAME}"
-                        git push origin HEAD:aws-test
+                        git push
                     """
                 }
             }
