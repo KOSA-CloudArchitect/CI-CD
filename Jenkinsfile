@@ -85,26 +85,34 @@ spec:
             }
         }
 
+
         stage('Update Manifest') {
             steps {
-                withCredentials([string(credentialsId: GITOPS_CREDENTIAL_ID, variable: 'GITOPS_PAT')]) {
+                // withCredentials 블록으로 git clone과 git push 모두를 감싸서 인증
+                withCredentials([
+                    // GitOps 리포지토리(CI-CD)에 Push할 때 사용할 PAT
+                    string(credentialsId: 'gitops-repo-pat', variable: 'GITOPS_PAT'),
+                    // web-server 리포지토리를 clone할 때 사용할 PAT
+                    string(credentialsId: 'github-pat', variable: 'GITHUB_PAT')
+                ]) {
                     sh """
-                        # https 방식으로 리포지토리 복제
-                        git clone https://github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
+                        # CI-CD 리포지토리를 PAT로 인증하여 클론
+                        git clone https://x-access-token:${GITOPS_PAT}@github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
                         cd ci-cd-repo
                         git checkout aws-test
 
+                        # Git 사용자 설정
                         git config --global user.email "jenkins@example.com"
                         git config --global user.name "Jenkins CI"
-                        
+
+                        # Helm Chart의 values.yaml 수정
                         sed -i "s/tag: .*/tag: \\"${env.IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_REPOSITORY_URI}|g" helm-chart/my-web-app/values.yaml
 
+                        # 변경사항 커밋 및 푸시
                         git add helm-chart/my-web-app/values.yaml
                         git commit -m "Deploy web-server new image: ${env.IMAGE_NAME}"
-                        
-                        # 깃허브 토큰을 사용해 푸시
-                        git push https://${GITOPS_PAT}@github.com/KOSA-CloudArchitect/CI-CD.git
+                        git push https://x-access-token:${GITOPS_PAT}@github.com/KOSA-CloudArchitect/CI-CD.git
                     """
                 }
             }
