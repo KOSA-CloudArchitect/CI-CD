@@ -10,7 +10,9 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
+    args:
+    - "\$(JENKINS_SECRET)"
+    - "\$(JENKINS_NAME)"
   - name: node
     image: node:18-slim
     command: ["sleep"]
@@ -29,25 +31,82 @@ spec:
         }
     }
 
-
     environment {
         AWS_REGION = 'ap-northeast-2'
         ECR_BACKEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-backend'
         ECR_FRONTEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-frontend'
-        // [수정] Clone용과 Push용 Credential ID를 분리
         GIT_CLONE_CREDENTIAL_ID = 'github-pat'
-        GIT_PUSH_CREDENTIAL_ID = 'github-pat-text' 
+        GIT_PUSH_CREDENTIAL_ID = 'github-pat-text' // Push 전용 Secret text 타입 Credential ID
     }
 
     stages {
-        // ... (Build & Push 단계는 동일) ...
+        stage('Checkout Application Code') {
+            steps {
+                dir('web-server-src') {
+                    git branch: 'main',
+                        credentialsId: GIT_CLONE_CREDENTIAL_ID,
+                        url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
+                }
+            }
+        }
+
+        stage('Build & Push All Services') {
+            parallel {
+                stage('Build & Push Backend') {
+                    steps {
+                        script {
+                            def ecrLoginPassword
+                            container('aws-cli') {
+                                ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
+                            }
+                            dir('web-server-src/backend') {
+                                container('node') {
+                                    sh 'npm install'
+                                    sh 'npm run build'
+                                }
+                                container('podman') {
+                                    sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_BACKEND_URI}"
+                                    def imageTag = "backend-build-${BUILD_NUMBER}"
+                                    def fullImageName = "${ECR_BACKEND_URI}:${imageTag}"
+                                    sh "podman build -t ${fullImageName} ."
+                                    sh "podman push ${fullImageName}"
+                                    env.BACKEND_IMAGE_TAG = imageTag
+                                }
+                            }
+                        }
+                    }
+                }
+                stage('Build & Push Frontend') {
+                    steps {
+                        script {
+                            def ecrLoginPassword
+                            container('aws-cli') {
+                                ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
+                            }
+                            dir('web-server-src/frontend') { 
+                                container('node') {
+                                    sh 'npm install'
+                                    sh 'npm run build'
+                                }
+                                container('podman') {
+                                    sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_FRONTEND_URI}"
+                                    def imageTag = "frontend-build-${BUILD_NUMBER}"
+                                    def fullImageName = "${ECR_FRONTEND_URI}:${imageTag}"
+                                    sh "podman build -t ${fullImageName} ."
+                                    sh "podman push ${fullImageName}"
+                                    env.FRONTEND_IMAGE_TAG = imageTag
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         stage('Update Manifests') {
             steps {
-                // Push는 Secret text 타입 사용
                 withCredentials([string(credentialsId: GIT_PUSH_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
                     sh """
-                        # HTTPS와 토큰으로 인증하여 클론
                         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
                         cd ci-cd-repo
                         git checkout aws-test
@@ -65,34 +124,6 @@ spec:
 
                         git add .
                         git commit -m "Deploy new images: backend ${env.BACKEND_IMAGE_TAG}, frontend ${env.FRONTEND_IMAGE_TAG}"
-                        git push
-                    """
-                }
-            }
-        }
-    }
-
-
-
-        }
-
-        stage('Update Manifest') {
-            steps {
-                withCredentials([string(credentialsId: GITHUB_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
-                    sh """
-                        git clone https://x-access-token:${GITHUB_TOKEN}@github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
-                        cd ci-cd-repo
-                        git checkout aws-test
-
-                        git config --global user.email "jenkins@example.com"
-                        git config --global user.name "Jenkins CI"
-
-                        # 백엔드 Helm Chart만 수정
-                        sed -i "s/tag: .*/tag: \\"${env.BACKEND_IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
-                        sed -i "s|repository:.*|repository: ${ECR_BACKEND_URI}|g" helm-chart/my-web-app/values.yaml
-
-                        git add helm-chart/my-web-app/values.yaml
-                        git commit -m "Deploy new backend image: ${env.BACKEND_IMAGE_TAG}"
                         git push
                     """
                 }
