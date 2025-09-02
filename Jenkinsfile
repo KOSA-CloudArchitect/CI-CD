@@ -11,7 +11,6 @@ spec:
   - name: jnlp
     image: jenkins/inbound-agent:latest
     args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
-    # [추가] 컨테이너별 자원 요청량 명시
     resources:
       requests:
         cpu: "200m"
@@ -64,11 +63,13 @@ spec:
             }
         }
 
+        // --- [수정] 'parallel' 블록의 문법을 올바르게 변경 ---
         stage('Build & Push All Services') {
-            parallel {
-                stage('Build & Push Backend') {
-                    steps {
+            steps {
+                parallel(
+                    backend: {
                         script {
+                            echo "--- Building & Pushing Backend ---"
                             def ecrLoginPassword
                             container('aws-cli') {
                                 ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
@@ -88,11 +89,10 @@ spec:
                                 }
                             }
                         }
-                    }
-                }
-                stage('Build & Push Frontend') {
-                    steps {
+                    },
+                    frontend: {
                         script {
+                            echo "--- Building & Pushing Frontend ---"
                             def ecrLoginPassword
                             container('aws-cli') {
                                 ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
@@ -113,9 +113,10 @@ spec:
                             }
                         }
                     }
-                }
+                )
             }
         }
+        // ----------------------------------------------------
 
         stage('Update Manifests') {
             steps {
