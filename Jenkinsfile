@@ -10,37 +10,23 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "256Mi"
+    args:
+    - "\$(JENKINS_SECRET)"
+    - "\$(JENKINS_NAME)"
   - name: node
     image: node:18-slim
     command: ["sleep"]
     args: ["99d"]
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "256Mi"
   - name: podman
     image: quay.io/podman/stable
     command: ["sleep"]
     args: ["99d"]
     securityContext:
       privileged: true
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "256Mi"
   - name: aws-cli
     image: amazon/aws-cli:latest
     command: ["sleep"]
     args: ["99d"]
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "256Mi"
 """
         }
     }
@@ -49,27 +35,28 @@ spec:
         AWS_REGION = 'ap-northeast-2'
         ECR_BACKEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-backend'
         ECR_FRONTEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-frontend'
-        GITHUB_CREDENTIAL_ID = 'github-pat'
+        // [수정] Clone용과 Push용 Credential ID 분리
+        GIT_CLONE_CREDENTIAL_ID = 'github-pat'
+        GIT_PUSH_CREDENTIAL_ID = 'github-pat-text' 
     }
 
     stages {
         stage('Checkout Application Code') {
             steps {
                 dir('web-server-src') {
+                    // Clone은 Username with password 타입의 github-pat 사용
                     git branch: 'main',
-                        credentialsId: GITHUB_CREDENTIAL_ID,
+                        credentialsId: GIT_CLONE_CREDENTIAL_ID,
                         url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
                 }
             }
         }
 
-        // --- [수정] 'parallel' 블록의 문법을 올바르게 변경 ---
         stage('Build & Push All Services') {
-            steps {
-                parallel(
-                    backend: {
+            parallel {
+                stage('Build & Push Backend') {
+                    steps {
                         script {
-                            echo "--- Building & Pushing Backend ---"
                             def ecrLoginPassword
                             container('aws-cli') {
                                 ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
@@ -89,15 +76,16 @@ spec:
                                 }
                             }
                         }
-                    },
-                    frontend: {
+                    }
+                }
+                stage('Build & Push Frontend') {
+                    steps {
                         script {
-                            echo "--- Building & Pushing Frontend ---"
                             def ecrLoginPassword
                             container('aws-cli') {
                                 ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
                             }
-                            dir('web-server-src/frontend') {
+                            dir('web-server-src/frontend') { 
                                 container('node') {
                                     sh 'npm install'
                                     sh 'npm run build'
@@ -113,14 +101,14 @@ spec:
                             }
                         }
                     }
-                )
+                }
             }
         }
-        // ----------------------------------------------------
 
         stage('Update Manifests') {
             steps {
-                withCredentials([string(credentialsId: GITHUB_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
+                // Push는 Secret text 타입의 github-pat-text 사용
+                withCredentials([string(credentialsId: GIT_PUSH_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
                     sh """
                         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
                         cd ci-cd-repo
