@@ -4,10 +4,10 @@
 replicaCount: 1
 
 image:
-  repository: asia-northeast3-docker.pkg.dev/kwon-cicd/my-web-app-repo/web-server-backend
+  repository: 890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-backend
   pullPolicy: IfNotPresent
   # Jenkins가 이 태그를 빌드 번호로 업데이트합니다.
-  tag: "41"
+  tag: "backend-build-77"
 
 service:
   type: ClusterIP
