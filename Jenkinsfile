@@ -10,9 +10,7 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
-    args:
-    - "\$(JENKINS_SECRET)"
-    - "\$(JENKINS_NAME)"
+    args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
   - name: node
     image: node:18-slim
     command: ["sleep"]
@@ -34,81 +32,48 @@ spec:
     environment {
         AWS_REGION = 'ap-northeast-2'
         ECR_BACKEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-backend'
-        ECR_FRONTEND_URI = '890571109462.dkr.ecr.ap-northeast-2.amazonaws.com/web-server-frontend'
-        // [수정] Clone용과 Push용 Credential ID 분리
-        GIT_CLONE_CREDENTIAL_ID = 'github-pat'
-        GIT_PUSH_CREDENTIAL_ID = 'github-pat-text' 
+        GITHUB_CREDENTIAL_ID = 'github-pat'
     }
 
     stages {
         stage('Checkout Application Code') {
             steps {
                 dir('web-server-src') {
-                    // Clone은 Username with password 타입의 github-pat 사용
                     git branch: 'main',
-                        credentialsId: GIT_CLONE_CREDENTIAL_ID,
+                        credentialsId: GITHUB_CREDENTIAL_ID,
                         url: 'https://github.com/KOSA-CloudArchitect/web-server.git'
                 }
             }
         }
 
-        stage('Build & Push All Services') {
-            parallel {
-                stage('Build & Push Backend') {
-                    steps {
-                        script {
-                            def ecrLoginPassword
-                            container('aws-cli') {
-                                ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
-                            }
-                            dir('web-server-src/backend') {
-                                container('node') {
-                                    sh 'npm install'
-                                    sh 'npm run build'
-                                }
-                                container('podman') {
-                                    sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_BACKEND_URI}"
-                                    def imageTag = "backend-build-${BUILD_NUMBER}"
-                                    def fullImageName = "${ECR_BACKEND_URI}:${imageTag}"
-                                    sh "podman build -t ${fullImageName} ."
-                                    sh "podman push ${fullImageName}"
-                                    env.BACKEND_IMAGE_TAG = imageTag
-                                }
-                            }
-                        }
+        stage('Build & Push Backend') {
+            steps {
+                script {
+                    def ecrLoginPassword
+                    container('aws-cli') {
+                        ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
                     }
-                }
-                stage('Build & Push Frontend') {
-                    steps {
-                        script {
-                            def ecrLoginPassword
-                            container('aws-cli') {
-                                ecrLoginPassword = sh(script: "aws ecr get-login-password --region ${AWS_REGION}", returnStdout: true).trim()
-                            }
-                            dir('web-server-src/frontend') { 
-                                container('node') {
-                                    sh 'npm install'
-                                    sh 'npm run build'
-                                }
-                                container('podman') {
-                                    sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_FRONTEND_URI}"
-                                    def imageTag = "frontend-build-${BUILD_NUMBER}"
-                                    def fullImageName = "${ECR_FRONTEND_URI}:${imageTag}"
-                                    sh "podman build -t ${fullImageName} ."
-                                    sh "podman push ${fullImageName}"
-                                    env.FRONTEND_IMAGE_TAG = imageTag
-                                }
-                            }
+                    dir('web-server-src/backend') {
+                        container('node') {
+                            sh 'npm install'
+                            sh 'npm run build'
+                        }
+                        container('podman') {
+                            sh "echo '${ecrLoginPassword}' | podman login --username AWS --password-stdin ${ECR_BACKEND_URI}"
+                            def imageTag = "backend-build-${BUILD_NUMBER}"
+                            def fullImageName = "${ECR_BACKEND_URI}:${imageTag}"
+                            sh "podman build -t ${fullImageName} ."
+                            sh "podman push ${fullImageName}"
+                            env.BACKEND_IMAGE_TAG = imageTag
                         }
                     }
                 }
             }
         }
 
-        stage('Update Manifests') {
+        stage('Update Manifest') {
             steps {
-                // Push는 Secret text 타입의 github-pat-text 사용
-                withCredentials([string(credentialsId: GIT_PUSH_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
+                withCredentials([string(credentialsId: GITHUB_CREDENTIAL_ID, variable: 'GITHUB_TOKEN')]) {
                     sh """
                         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/KOSA-CloudArchitect/CI-CD.git ci-cd-repo
                         cd ci-cd-repo
@@ -117,16 +82,12 @@ spec:
                         git config --global user.email "jenkins@example.com"
                         git config --global user.name "Jenkins CI"
 
-                        # Backend Helm Chart 수정
+                        # 백엔드 Helm Chart만 수정
                         sed -i "s/tag: .*/tag: \\"${env.BACKEND_IMAGE_TAG}\\"/g" helm-chart/my-web-app/values.yaml
                         sed -i "s|repository:.*|repository: ${ECR_BACKEND_URI}|g" helm-chart/my-web-app/values.yaml
 
-                        # Frontend Helm Chart 수정 (경로 예시)
-                        sed -i "s/tag: .*/tag: \\"${env.FRONTEND_IMAGE_TAG}\\"/g" helm-chart/my-frontend-app/values.yaml
-                        sed -i "s|repository:.*|repository: ${ECR_FRONTEND_URI}|g" helm-chart/my-frontend-app/values.yaml
-
-                        git add .
-                        git commit -m "Deploy new images: backend ${env.BACKEND_IMAGE_TAG}, frontend ${env.FRONTEND_IMAGE_TAG}"
+                        git add helm-chart/my-web-app/values.yaml
+                        git commit -m "Deploy new backend image: ${env.BACKEND_IMAGE_TAG}"
                         git push
                     """
                 }
